@@ -1,0 +1,52 @@
+// Receiver Input Pins
+const int RC_CH1_IN = 0; 
+const int RC_CH2_IN = 1;
+
+// PWM Output Pins
+const int PWM_OUT_1 = 4;
+const int PWM_OUT_2 = 5;
+
+// PWM Configuration for ESP32-C3
+const int FREQ = 5000;
+const int RESOLUTION = 8; // 8-bit (0-255)
+
+// Deadzone setting (Adjust this if your sticks are jittery)
+const int deadzoneThreshold = 5; 
+
+void setup() {
+  Serial.begin(115200);
+
+  // Configure Inputs
+  pinMode(RC_CH1_IN, INPUT);
+  pinMode(RC_CH2_IN, INPUT);
+
+  // Configure PWM Outputs
+  ledcAttach(PWM_OUT_1, FREQ, RESOLUTION);
+  ledcAttach(PWM_OUT_2, FREQ, RESOLUTION);
+}
+
+void loop() {
+  // 1. Capture the RC pulse (in microseconds)
+  long pulse1 = pulseIn(RC_CH1_IN, HIGH, 25000);
+  long pulse2 = pulseIn(RC_CH2_IN, HIGH, 25000);
+
+  // 2. Map the custom ranges to -100 to 100
+  int pwmValue1 = constrain(map(pulse1, 1090, 1960, -100, 100), -100, 100);
+  int pwmValue2 = constrain(map(pulse2, 1100, 1950, 100, -100), -100, 100);
+
+  // 3. Apply Deadzone Logic
+  // If the absolute value is less than the threshold, force it to zero
+  if (abs(pwmValue1) < deadzoneThreshold) pwmValue1 = 0;
+  if (abs(pwmValue2) < deadzoneThreshold) pwmValue2 = 0;
+
+  // 4. Write to the output pins
+  // Note: ledcWrite expects a positive value. 
+  // If your drive code expects negative values, you'll need to handle that in the drive logic.
+  ledcWrite(PWM_OUT_1, (pulse1 == 0) ? 0 : pwmValue1);
+  ledcWrite(PWM_OUT_2, (pulse2 == 0) ? 0 : pwmValue2);
+
+  // Debugging output
+  Serial.printf("RC1: %ld -> Val1: %d | RC2: %ld -> Val2: %d\n", pulse1, pwmValue1, pulse2, pwmValue2);
+
+  delay(10); 
+}
