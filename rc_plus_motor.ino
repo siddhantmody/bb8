@@ -1,17 +1,21 @@
 #include <Arduino.h>
+#include <ESP32Servo.h>
 
 // --- PIN DEFINITIONS ---
 // Encoder Pins
-const int ENC1 = 1;  
-const int ENC2 = 0;  
+const int ENC1 = 36; //driving  
+const int ENC2 = 37; // spinning  
 
 // RC Input Pins
-const int RC_CH1_IN = 18; 
-const int RC_CH2_IN = 19; 
+const int RC_CH1_IN = 4; 
+const int RC_CH2_IN = 5;
+const int RC_CH3_IN = 6;
+const int RC_CH4_IN = 7;
 
 // Motor Pins (M5Stack Stamp C3)
-const int DIR1 = 7; const int PWM1 = 6;
-const int DIR2 = 5; const int PWM2 = 4;
+const int DIR1 = 40; const int PWM1 = 39;
+const int DIR2 = 41; const int PWM2 = 38;
+const int SERVO = 3;
 
 // --- STATE VARIABLES ---
 volatile uint32_t enc1_ticks = 0, enc2_ticks = 0;
