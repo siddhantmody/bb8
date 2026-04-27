@@ -1,0 +1,101 @@
+#include <Arduino.h>
+
+// --- PIN DEFINITIONS ---
+const int ENC1 = 36; 
+const int ENC2 = 37; 
+const int RC_CH1_IN = 4; 
+const int RC_CH2_IN = 7;
+const int RC_CH3_IN = 6;
+const int RC_CH4_IN = 5;
+
+// Motor Pins
+const int DIR1 = 40; const int PWM1 = 39;
+const int DIR2 = 41; const int PWM2 = 38;
+
+// Servo Pin (Added)
+const int SERVO_PIN = 14; // Choose an available GPIO
+
+// --- PWM SETTINGS (LEDC) ---
+const int SERVO_CHN = 2;    // Use channel 2 (0 and 1 are motors)
+const int SERVO_FREQ = 50;   // 50Hz for standard servos
+const int SERVO_RES = 14;    // 14-bit resolution for smooth movement
+
+// 14-bit (0-16383) Duty Cycle Math: 
+// 1ms (0 deg)  -> (1/20) * 16384 ≈ 819
+// 2ms (180 deg) -> (2/20) * 16384 ≈ 1638
+const int SERVO_MIN = 819;   
+const int SERVO_MAX = 1638;
+
+// --- STATE VARIABLES ---
+volatile uint32_t enc1_ticks = 0, enc2_ticks = 0;
+portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+
+void IRAM_ATTR isr1() { enc1_ticks++; }
+void IRAM_ATTR isr2() { enc2_ticks++; }
+
+void setup() {
+  Serial.begin(115200);
+  
+  // Motor Setup
+  pinMode(DIR1, OUTPUT); pinMode(DIR2, OUTPUT);
+  ledcAttach(PWM1, 5000, 8); 
+  ledcAttach(PWM2, 5000, 8);
+
+  // Servo Setup (Native PWM, no library)
+  ledcAttachChannel(SERVO_PIN, SERVO_FREQ, SERVO_RES, SERVO_CHN);
+
+  // RC and Encoder Inputs
+  pinMode(RC_CH1_IN, INPUT); pinMode(RC_CH2_IN, INPUT);
+  pinMode(RC_CH3_IN, INPUT); pinMode(RC_CH4_IN, INPUT);
+  pinMode(ENC1, INPUT_PULLUP); pinMode(ENC2, INPUT_PULLUP);
+  
+  attachInterrupt(digitalPinToInterrupt(ENC1), isr1, RISING);
+  attachInterrupt(digitalPinToInterrupt(ENC2), isr2, RISING);
+
+  Serial.println("System Ready: RC, Encoders, and Hardware PWM Servo.");
+}
+
+void driveMotor(int pinPWM, int pinDIR, int speed) {
+  digitalWrite(pinDIR, speed >= 0 ? HIGH : LOW);
+  ledcWrite(pinPWM, constrain(abs(speed), 0, 255));
+}
+
+void loop() {
+  // 1. RC CAPTURE
+  long pulse1 = pulseIn(RC_CH1_IN, HIGH, 25000);
+  long pulse2 = pulseIn(RC_CH2_IN, HIGH, 25000);
+  long pulse3 = pulseIn(RC_CH3_IN, HIGH, 25000);
+
+  // 2. MOTOR LOGIC
+  int motor1_speed = (pulse1 > 1000) ? map(pulse1, 1100, 1900, -255, 255) : 0;
+  int motor2_speed = (pulse2 > 1000) ? map(pulse2, 1100, 1900, 255, -255) : 0;
+
+  if (abs(motor1_speed) < 30) motor1_speed = 0;
+  if (abs(motor2_speed) < 30) motor2_speed = 0;
+
+  driveMotor(PWM1, DIR1, motor1_speed);
+  driveMotor(PWM2, DIR2, motor2_speed);
+
+  // 3. SERVO LOGIC (Direct PWM)
+  if (pulse3 > 1000) {
+    // Map RC pulse (1100-1900us) directly to 14-bit duty cycle (819-1638)
+    int servo_duty = map(pulse3, 1100, 1900, SERVO_MIN, SERVO_MAX);
+    servo_duty = constrain(servo_duty, SERVO_MIN, SERVO_MAX);
+    ledcWrite(SERVO_PIN, servo_duty);
+  }
+
+  // 4. ENCODER DATA
+  uint32_t snapshot1, snapshot2;
+  portENTER_CRITICAL(&mux);
+  snapshot1 = enc1_ticks; enc1_ticks = 0;
+  snapshot2 = enc2_ticks; enc2_ticks = 0;
+  portEXIT_CRITICAL(&mux);
+
+  if (millis() % 50 == 0) {
+    Serial.printf("RC3:%ld | ServoDuty:%d | Enc:[%u, %u]\n", pulse3, 
+                  (pulse3 > 0 ? map(pulse3, 1100, 1900, SERVO_MIN, SERVO_MAX) : 0), 
+                  snapshot1, snapshot2);
+  }
+
+  delay(10); 
+}
